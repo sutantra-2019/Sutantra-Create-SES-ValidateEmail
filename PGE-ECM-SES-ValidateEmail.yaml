@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Creates A Lambda Function
+Parameters:
+  pFunctionName:
+    Type: String
+    Default: "PGE-ECM-SES-ValidateEmail"
+  pEnvironment:
+    Type: String
+    Default: "Dev"
+  pLambdaRoleARN:
+    Type: String
+    Default: "arn:aws:iam::138871512076:role/PGE-ECM-Access-For-Lambda" 
+Resources:
+  rLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:     
+      Code:
+        ZipFile: !Sub |
+          def Validate_Email(event, context):
+            import json, boto3
+            sesObj = boto3.client('ses')
+            pipelineObj = boto3.client('codepipeline')
+            pipelineJob=event['CodePipeline.job']['id']
+            userParameters = json.loads(event['CodePipeline.job']['data']['actionConfiguration']['configuration']['UserParameters'])
+            print("printing job id ==> ",pipelineJob)
+            print("user parameters ==> ",userParameters)
+            try:
+              for i in userParameters:
+                if i == "Email":
+                  sesObj.verify_email_identity(EmailAddress = userParameters[i])
+              response = pipelineObj.put_job_success_result(jobId=pipelineJob)
+              return response
+            except:
+              print("Failed")
+              response = pipelineObj.put_job_failure_result(jobId=pipelineJob, failureDetails={'type': 'JobFailed','message':'Failed In Lambda'})
+              return response
+      Environment:
+        Variables: 
+          Region: 'us-west-1'
+          Account: 138871512076
+      FunctionName: !Ref pFunctionName          
+      Handler: index.Validate_Email
+      MemorySize: 128
+      Role: !Ref pLambdaRoleARN
+      Runtime: python3.6
+      Tags: 
+        - Key: FunctionName
+          Value: !Ref pFunctionName
+          Key: Environment 
+          Value: !Ref pEnvironment
+      Timeout: '300'
